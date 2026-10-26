@@ -28,10 +28,24 @@ export async function POST(req: NextRequest) {
     }
 
     if (!inputFolder || !outputFolder) {
-      return new Response(JSON.stringify({ error: 'Both inputFolder and outputFolder are required.' }), {
+      return new Response(JSON.stringify({ error: 'Пожалуйста, укажите обе папки: с исходными видео и папку для сохранения датасета.' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+
+    // Check if input path exists
+    const resolvedInput = path.resolve(inputFolder.trim());
+    if (!fs.existsSync(resolvedInput)) {
+      return new Response(
+        JSON.stringify({
+          error: `Входная папка не существует: "${resolvedInput}". Пожалуйста, проверьте путь к папке с видео.`,
+        }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     // Resolve script path
@@ -46,8 +60,8 @@ export async function POST(req: NextRequest) {
     // Build python CLI arguments
     const args = [
       scriptPath,
-      '--input', inputFolder,
-      '--output_dir', outputFolder,
+      '--input', inputFolder.trim(),
+      '--output_dir', outputFolder.trim(),
       '--max_res', String(maxRes),
       '--format', format,
     ];
@@ -74,9 +88,11 @@ export async function POST(req: NextRequest) {
     ].filter(Boolean) as string[];
 
     let pythonCmd = 'python';
+    let isVenvFound = false;
     for (const p of venvPaths) {
       if (fs.existsSync(p)) {
         pythonCmd = p;
+        isVenvFound = true;
         break;
       }
     }
@@ -108,7 +124,9 @@ export async function POST(req: NextRequest) {
         sendEvent({
           status: 'started',
           command: `${pythonCmd} ${args.join(' ')}`,
-          message: 'Worker process spawned.',
+          message: isVenvFound
+            ? `Воркер запущен с использованием локального виртуального окружения: ${pythonCmd}`
+            : `Внимание: Локальный .venv не найден, запуск через системный "${pythonCmd}". Если библиотек нет, выполните setup.bat.`,
         });
 
         let lineBuffer = '';
@@ -126,18 +144,18 @@ export async function POST(req: NextRequest) {
               sendEvent(jsonMsg);
             } catch {
               // Non-json stdout fallback
-              sendEvent({ status: 'log', raw: trimmed });
+              sendEvent({ status: 'log', raw: trimmed, message: trimmed });
             }
           }
         });
 
         proc.stderr.on('data', (chunk: Buffer) => {
           const text = chunk.toString('utf-8');
-          sendEvent({ status: 'stderr', text });
+          sendEvent({ status: 'stderr', text, message: text });
         });
 
         proc.on('error', (err) => {
-          sendEvent({ status: 'fatal_error', message: `Failed to spawn worker: ${err.message}` });
+          sendEvent({ status: 'fatal_error', message: `Ошибка запуска воркера: ${err.message}` });
           activeProcess = null;
           controller.close();
         });
@@ -147,13 +165,16 @@ export async function POST(req: NextRequest) {
             try {
               sendEvent(JSON.parse(lineBuffer.trim()));
             } catch {
-              sendEvent({ status: 'log', raw: lineBuffer.trim() });
+              sendEvent({ status: 'log', raw: lineBuffer.trim(), message: lineBuffer.trim() });
             }
           }
           sendEvent({
             status: 'exit',
             code,
-            message: code === 0 ? 'Worker finished successfully.' : `Worker exited with code ${code}.`,
+            message:
+              code === 0
+                ? 'Обработка успешно завершена.'
+                : `Воркер завершился с кодом ошибки ${code}. Проверьте сообщения выше и зависимости в .venv.`,
           });
           activeProcess = null;
           controller.close();

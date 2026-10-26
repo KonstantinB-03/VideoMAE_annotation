@@ -18,12 +18,14 @@ export default function Home() {
       const savedInput = localStorage.getItem('videomae_input_folder');
       const savedOutput = localStorage.getItem('videomae_output_folder');
       const savedDataset = localStorage.getItem('videomae_dataset_folder');
-      const defaultInput = 'D:\\Workspace\\shop_guard\\VideoMAE_annotation\\videos_data\\Кражи';
-      const defaultOutput = 'D:\\Workspace\\shop_guard\\VideoMAE_annotation\\test_cctv_dataset';
 
-      setInputFolder(savedInput || defaultInput);
-      setOutputFolder(savedOutput || defaultOutput);
-      setDatasetFolder(savedDataset || savedOutput || defaultOutput);
+      if (savedInput) setInputFolder(savedInput);
+      if (savedOutput) {
+        setOutputFolder(savedOutput);
+        setDatasetFolder(savedDataset || savedOutput);
+      } else if (savedDataset) {
+        setDatasetFolder(savedDataset);
+      }
     } catch {
       // ignore
     }

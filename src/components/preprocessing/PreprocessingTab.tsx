@@ -110,9 +110,14 @@ export const PreprocessingTab: React.FC<PreprocessingTabProps> = ({
               const rawData = line.slice(6).trim();
               if (!rawData) continue;
               try {
-                const msg: ExtractionWorkerProgress = JSON.parse(rawData);
+                const msg: any = JSON.parse(rawData);
 
-                if (msg.status === 'batch_started') {
+                if (msg.status === 'started') {
+                  addLog(msg.message || 'Воркер запущен.');
+                  if (msg.command) {
+                    addLog(`Команда: ${msg.command}`);
+                  }
+                } else if (msg.status === 'batch_started') {
                   setBatchStats((s) => ({
                     ...s,
                     totalVideos: msg.total_videos || 0,
@@ -139,8 +144,12 @@ export const PreprocessingTab: React.FC<PreprocessingTabProps> = ({
                   addLog(`Готово: ${msg.video} (${msg.total_frames} кадров успешно извлечено).`);
                 } else if (msg.status === 'batch_completed') {
                   addLog(`Пакетная обработка завершена! Успешно: ${msg.successful}, ошибок: ${msg.failed}.`);
+                } else if (msg.status === 'stderr') {
+                  addLog(`[STDERR] ${msg.text || msg.message}`);
                 } else if (msg.status === 'error' || msg.status === 'fatal_error') {
-                  addLog(`ОШИБКА: ${msg.message || msg.error}`);
+                  addLog(`[ОШИБКА] ${msg.message || msg.error}`);
+                } else if (msg.status === 'exit') {
+                  addLog(msg.message || `Воркер завершил работу (код ${msg.code})`);
                 } else if (msg.message) {
                   addLog(msg.message);
                 }
